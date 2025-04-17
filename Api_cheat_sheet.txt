@@ -1,0 +1,86 @@
+Task Bot API JSON Cheat Sheet
+This guide shows the expected JSON body structure for POST requests to your WhatsApp Task Bot API hosted on Render. Remember to set the Content-Type header to application/json in Postman for these requests.
+
+1. Add a New Member
+Method: POST
+
+URL Path: /api/members
+
+Description: Creates a new member in the system.
+
+JSON Body Fields:
+
+name (String, Required): The full name of the member.
+
+phone (String, Required): The member's phone number in international E.164 format (must start with +, e.g., +447123456789). Must be unique across all members.
+
+Example JSON Body:
+
+{
+    "name": "Alice Smith",
+    "phone": "+447123456789"
+}
+
+2. Add a New Task Definition
+Method: POST
+
+URL Path: /api/tasks
+
+Description: Creates a definition for a task that can be assigned later.
+
+JSON Body Fields:
+
+name (String, Required): The name of the task (e.g., "Clean Kitchen"). Must be unique across all tasks.
+
+description (String, Optional): A more detailed description of what the task involves.
+
+frequency (String, Optional): How often the task should automatically cycle. Defaults to 'manual' if not provided. Valid options are: 'daily', 'weekly', 'monthly', 'manual'. Tasks set to 'weekly' (etc.) will be automatically reassigned by the background job.
+
+Example JSON Body (Manual Task):
+
+{
+    "name": "Deep Clean Fridge",
+    "description": "Empty fridge, clean all shelves and drawers."
+}
+
+Example JSON Body (Weekly Recurring Task):
+
+{
+    "name": "Thursday Bin Night",
+    "description": "Put recycling and general waste bins out on the curb.",
+    "frequency": "weekly",
+    "recur_day_of_week": 3
+}
+
+3. Assign a Task to a Member
+Method: POST
+
+URL Path: /api/assign
+
+Description: Creates a specific assignment of an existing task to an existing member, setting a due date.
+
+JSON Body Fields:
+
+member_id (String, Required): The unique UUID identifier of the member you want to assign the task to. You can get this ID from the response when creating the member or by calling GET /api/members.
+
+task_id (String, Required): The unique UUID identifier of the task definition you want to assign. You can get this ID from the response when creating the task or by calling GET /api/tasks.
+
+due_date (String, Required): The date the task should be completed by, in YYYY-MM-DD format (e.g., 2025-04-24).
+
+Example JSON Body:
+
+{
+    "member_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    "task_id": "f0e9d8c7-b6a5-4321-fedc-ba9876543210",
+    "due_date": "2025-04-30"
+}
+
+(Remember to replace the example UUIDs with actual member_id and task_id values from your database!)
+
+Notes:
+
+Always set the Content-Type header to application/json for these POST requests in Postman.
+
+Replace placeholder values (like <your-render-app-name>, example names, phone numbers, UUIDs, dates) with your actual data.
+
+The base URL for these paths is your Render service URL (e.g., https://your-app-name.onrender.com).
