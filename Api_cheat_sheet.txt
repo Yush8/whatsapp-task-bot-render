@@ -1,86 +1,306 @@
-Task Bot API JSON Cheat Sheet
-This guide shows the expected JSON body structure for POST requests to your WhatsApp Task Bot API hosted on Render. Remember to set the Content-Type header to application/json in Postman for these requests.
+Task Bot API Cheat Sheet (Full Management)
+This guide shows the API endpoints for managing your WhatsApp Task Bot, including the expected JSON structures for POST and PUT requests. Use this with tools like Postman.
 
-1. Add a New Member
-Method: POST
+Base URL: https://<your-render-app-name>.onrender.com (Replace with your actual Render URL)
 
-URL Path: /api/members
+Default Header: For POST and PUT requests sending JSON, always set the header Content-Type: application/json.
 
-Description: Creates a new member in the system.
+Members API (/api/members)
+GET /api/members
 
-JSON Body Fields:
+Description: Lists all members, including stats and availability. Ordered by date_added.
 
-name (String, Required): The full name of the member.
+Body: None.
 
-phone (String, Required): The member's phone number in international E.164 format (must start with +, e.g., +447123456789). Must be unique across all members.
+Success Response: 200 OK with JSON array [{"id": "...", "name": "...", "phone": "...", "date_added": "...", "completed_count": 0, "skipped_count": 0, "missed_count": 0, "is_away": false, "away_until": null}, ...].
 
-Example JSON Body:
+POST /api/members
+
+Description: Creates a new member (stats/availability default to 0/false/null).
+
+Body (JSON):
+
+name (String, Required): Member's full name.
+
+phone (String, Required): Member's phone number in E.164 format (e.g., +447123456789). Must be unique.
+
+Example JSON:
 
 {
-    "name": "Alice Smith",
-    "phone": "+447123456789"
+    "name": "Dana Scully",
+    "phone": "+12025550147"
 }
 
-2. Add a New Task Definition
-Method: POST
+Success Response: 201 Created with JSON {"status": "success", "member": { ...full member details... }}.
 
-URL Path: /api/tasks
+Error Responses: 400 Bad Request, 409 Conflict.
 
-Description: Creates a definition for a task that can be assigned later.
+GET /api/members/<uuid:member_id>
 
-JSON Body Fields:
+Description: Gets full details for a single member.
 
-name (String, Required): The name of the task (e.g., "Clean Kitchen"). Must be unique across all tasks.
+URL Parameter: <uuid:member_id>.
 
-description (String, Optional): A more detailed description of what the task involves.
+Body: None.
 
-frequency (String, Optional): How often the task should automatically cycle. Defaults to 'manual' if not provided. Valid options are: 'daily', 'weekly', 'monthly', 'manual'. Tasks set to 'weekly' (etc.) will be automatically reassigned by the background job.
+Success Response: 200 OK with JSON object {...full member details...}.
 
-Example JSON Body (Manual Task):
+Error Response: 404 Not Found.
+
+PUT /api/members/<uuid:member_id>
+
+Description: Updates a member's name and/or phone number. Does not update stats or availability (use specific endpoints for availability).
+
+URL Parameter: <uuid:member_id>.
+
+Body (JSON): Include name and/or phone.
+
+Example JSON:
 
 {
-    "name": "Deep Clean Fridge",
-    "description": "Empty fridge, clean all shelves and drawers."
+    "name": "Special Agent Dana Scully",
+    "phone": "+12025550148"
 }
 
-Example JSON Body (Weekly Recurring Task):
+Success Response: 200 OK with JSON {"status": "success", "member": { ...updated details... }}.
+
+Error Responses: 400 Bad Request, 404 Not Found, 409 Conflict.
+
+DELETE /api/members/<uuid:member_id>
+
+Description: Deletes a member and their assignments (CASCADE).
+
+URL Parameter: <uuid:member_id>.
+
+Body: None.
+
+Success Response: 200 OK with JSON {"status": "success", "message": "..."} or 204 No Content.
+
+Error Response: 404 Not Found.
+
+POST /api/members/<uuid:member_id>/away
+
+Description: Marks a member as unavailable until a specified date.
+
+URL Parameter: <uuid:member_id>.
+
+Body (JSON):
+
+away_until (String, Required): Date member becomes available again (YYYY-MM-DD format). Must be a future date.
+
+Example JSON:
 
 {
-    "name": "Thursday Bin Night",
-    "description": "Put recycling and general waste bins out on the curb.",
+    "away_until": "2025-05-15"
+}
+
+Success Response: 200 OK with JSON {"status": "success", "message": "..."}.
+
+Error Responses: 400 Bad Request (missing/invalid date), 404 Not Found.
+
+POST /api/members/<uuid:member_id>/back
+
+Description: Marks a member as available again immediately.
+
+URL Parameter: <uuid:member_id>.
+
+Body: None.
+
+Success Response: 200 OK with JSON {"status": "success", "message": "..."}.
+
+Error Response: 404 Not Found.
+
+Tasks API (/api/tasks)
+GET /api/tasks
+
+Description: Lists all task definitions.
+
+Body: None.
+
+Success Response: 200 OK with JSON array [...].
+
+POST /api/tasks
+
+Description: Creates a new task definition.
+
+Body (JSON):
+
+name (String, Required): Unique name.
+
+description (String, Optional).
+
+frequency (String, Optional): 'daily', 'weekly', 'monthly', 'manual'. Defaults to 'manual'.
+
+recur_day_of_week (Integer, Required if frequency is 'weekly'): 0=Mon, ..., 6=Sun.
+
+Example JSON (Daily):
+
+{
+    "name": "Check Mailbox",
+    "frequency": "daily"
+}
+
+Example JSON (Weekly):
+
+{
+    "name": "Friday Tidy Up",
+    "description": "General tidy around the house.",
     "frequency": "weekly",
-    "recur_day_of_week": 3
+    "recur_day_of_week": 4
 }
 
-3. Assign a Task to a Member
-Method: POST
+Success Response: 201 Created with JSON {"status": "success", "task": { ... }}.
 
-URL Path: /api/assign
+Error Responses: 400 Bad Request, 409 Conflict.
 
-Description: Creates a specific assignment of an existing task to an existing member, setting a due date.
+GET /api/tasks/<uuid:task_id>
 
-JSON Body Fields:
+Description: Gets details for a single task definition.
 
-member_id (String, Required): The unique UUID identifier of the member you want to assign the task to. You can get this ID from the response when creating the member or by calling GET /api/members.
+URL Parameter: <uuid:task_id>.
 
-task_id (String, Required): The unique UUID identifier of the task definition you want to assign. You can get this ID from the response when creating the task or by calling GET /api/tasks.
+Body: None.
 
-due_date (String, Required): The date the task should be completed by, in YYYY-MM-DD format (e.g., 2025-04-24).
+Success Response: 200 OK with JSON object {...}.
 
-Example JSON Body:
+Error Response: 404 Not Found.
+
+PUT /api/tasks/<uuid:task_id>
+
+Description: Updates a task definition.
+
+URL Parameter: <uuid:task_id>.
+
+Body (JSON): Include fields to update (name, description, frequency, recur_day_of_week). Validate rules for frequency/recur_day_of_week apply.
+
+Example JSON:
 
 {
-    "member_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-    "task_id": "f0e9d8c7-b6a5-4321-fedc-ba9876543210",
-    "due_date": "2025-04-30"
+    "description": "Water all indoor and balcony plants.",
+    "recur_day_of_week": 5
 }
 
-(Remember to replace the example UUIDs with actual member_id and task_id values from your database!)
+Success Response: 200 OK with JSON {"status": "success", "task": { ...updated details... }}.
 
-Notes:
+Error Responses: 400 Bad Request, 404 Not Found, 409 Conflict.
 
-Always set the Content-Type header to application/json for these POST requests in Postman.
+DELETE /api/tasks/<uuid:task_id>
 
-Replace placeholder values (like <your-render-app-name>, example names, phone numbers, UUIDs, dates) with your actual data.
+Description: Deletes a task definition and its assignments (CASCADE).
 
-The base URL for these paths is your Render service URL (e.g., https://your-app-name.onrender.com).
+URL Parameter: <uuid:task_id>.
+
+Body: None.
+
+Success Response: 200 OK with JSON {"status": "success", "message": "..."} or 204 No Content.
+
+Error Response: 404 Not Found.
+
+Assignments API (/api/assignments, /api/assign)
+GET /api/assignments
+
+Description: Lists all assignment instances, joining member/task names.
+
+Body: None.
+
+Success Response: 200 OK with JSON array [...].
+
+POST /api/assign
+
+Description: Manually creates a single assignment instance. Use for 'manual' tasks or one-offs.
+
+Body (JSON):
+
+member_id (String, Required): Member UUID.
+
+task_id (String, Required): Task UUID.
+
+due_date (String, Required): Due date (YYYY-MM-DD).
+
+Example JSON:
+
+{
+    "member_id": "a1b2c3d4-...",
+    "task_id": "f0e9d8c7-...",
+    "due_date": "2025-05-10"
+}
+
+Success Response: 201 Created with JSON {"status": "success", "assignment": { ... }}.
+
+Error Responses: 400 Bad Request, 404 Not Found, 409 Conflict.
+
+GET /api/assignments/<uuid:assignment_id>
+
+Description: Gets details for a single assignment instance.
+
+URL Parameter: <uuid:assignment_id>.
+
+Body: None.
+
+Success Response: 200 OK with JSON object {...}.
+
+Error Response: 404 Not Found.
+
+PUT /api/assignments/<uuid:assignment_id>
+
+Description: Updates an assignment (e.g., due date, completion status).
+
+URL Parameter: <uuid:assignment_id>.
+
+Body (JSON): Include due_date (YYYY-MM-DD) and/or completed (true/false).
+
+Example JSON:
+
+{
+    "due_date": "2025-05-11",
+    "completed": false
+}
+
+Success Response: 200 OK with JSON {"status": "success", "assignment": { ...updated details... }}.
+
+Error Responses: 400 Bad Request, 404 Not Found.
+
+POST /api/assignments/<uuid:assignment_id>/complete
+
+Description: Marks a specific assignment as complete.
+
+URL Parameter: <uuid:assignment_id>.
+
+Body: None.
+
+Success Response: 200 OK with JSON {"status": "success", "assignment": { ...updated details... }}.
+
+Error Responses: 404 Not Found.
+
+DELETE /api/assignments/<uuid:assignment_id>
+
+Description: Deletes a specific assignment instance.
+
+URL Parameter: <uuid:assignment_id>.
+
+Body: None.
+
+Success Response: 200 OK with JSON {"status": "success", "message": "..."} or 204 No Content.
+
+Error Response: 404 Not Found.
+
+Notifications API (/api/notify)
+POST /api/notify/all_chores
+
+Description: Sends a generic "check chores" reminder to ALL members.
+
+Body: None.
+
+Success Response: 200 OK with JSON {"status": "...", "successful_notifications": X, ...}.
+
+POST /api/notify/member/<uuid:member_id>
+
+Description: Sends current outstanding task list to a specific member.
+
+URL Parameter: <uuid:member_id>.
+
+Body: None.
+
+Success Response: 200 OK with JSON {"status": "success", "message": "..."}.
+
+Error Responses: 404 Not Found, 500 Internal Server Error.
