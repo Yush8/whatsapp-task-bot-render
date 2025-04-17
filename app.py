@@ -92,59 +92,102 @@ def execute_query(query, params=None, fetch_one=False, fetch_all=False, commit=F
         return [dict(row) for row in result_data]
     return True
 
-# --- Database Initialization ---
+# --- Database Initialization (Corrected Version - No Default Tasks) ---
 def init_db():
-    """Creates/updates the database tables."""
+    """Creates/updates the database tables without adding default tasks."""
+    # NOTE: Ensure uuid-ossp extension is available for uuid_generate_v4()
+    # Running this on an existing DB should be safe due to IF NOT EXISTS clauses.
     commands = [
-        """CREATE EXTENSION IF NOT EXISTS "uuid-ossp";""",
-        """CREATE TABLE IF NOT EXISTS members (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE,
+        # Enable UUID generation
+        """
+        CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+        """,
+        # Create members table with new columns
+        """
+        CREATE TABLE IF NOT EXISTS members (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL UNIQUE,
             date_added TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             completed_count INTEGER NOT NULL DEFAULT 0,
             skipped_count INTEGER NOT NULL DEFAULT 0,
             missed_count INTEGER NOT NULL DEFAULT 0,
             is_away BOOLEAN NOT NULL DEFAULT FALSE,
             away_until DATE
-        );""",
-         # Add the ALTER TABLE commands here too for safety on re-init
+        );
+        """,
+        # Add member columns safely if they don't exist
         """ALTER TABLE members ADD COLUMN IF NOT EXISTS completed_count INTEGER NOT NULL DEFAULT 0;""",
         """ALTER TABLE members ADD COLUMN IF NOT EXISTS skipped_count INTEGER NOT NULL DEFAULT 0;""",
         """ALTER TABLE members ADD COLUMN IF NOT EXISTS missed_count INTEGER NOT NULL DEFAULT 0;""",
         """ALTER TABLE members ADD COLUMN IF NOT EXISTS is_away BOOLEAN NOT NULL DEFAULT FALSE;""",
         """ALTER TABLE members ADD COLUMN IF NOT EXISTS away_until DATE;""",
-        """CREATE TABLE IF NOT EXISTS tasks (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name TEXT NOT NULL UNIQUE, description TEXT,
+        # Create tasks table with frequency and day column/constraint
+        """
+        CREATE TABLE IF NOT EXISTS tasks (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
             frequency TEXT CHECK (frequency IN ('weekly', 'daily', 'monthly', 'manual')),
-            recur_day_of_week INTEGER CHECK (recur_day_of_week BETWEEN 0 AND 6),
+            recur_day_of_week INTEGER CHECK (recur_day_of_week BETWEEN 0 AND 6), -- 0=Monday, 6=Sunday
             date_added TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT freq_day_check CHECK (frequency != 'weekly' OR recur_day_of_week IS NOT NULL)
-        );""",
-        """ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recur_day_of_week INTEGER CHECK (recur_day_of_week BETWEEN 0 AND 6);""",
-        """DO $$ BEGIN IF NOT EXISTS (...) THEN ALTER TABLE tasks ADD CONSTRAINT freq_day_check ...; END $$;""", # Keep full constraint add logic
-        """CREATE TABLE IF NOT EXISTS assignments (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+        );
+        """,
+        # Add task column safely if it doesn't exist
+        """
+        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recur_day_of_week INTEGER CHECK (recur_day_of_week BETWEEN 0 AND 6);
+        """,
+        # Add task constraint safely if it doesn't exist
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_name = 'freq_day_check' AND table_name = 'tasks'
+            ) THEN
+                ALTER TABLE tasks ADD CONSTRAINT freq_day_check
+                CHECK (frequency != 'weekly' OR recur_day_of_week IS NOT NULL);
+            END IF;
+        END $$;
+        """,
+        # Create assignments table
+        """
+        CREATE TABLE IF NOT EXISTS assignments (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
             task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-            assigned_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, due_date DATE NOT NULL,
-            completed BOOLEAN NOT NULL DEFAULT FALSE, completion_date TIMESTAMP WITH TIME ZONE,
+            assigned_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            due_date DATE NOT NULL,
+            completed BOOLEAN NOT NULL DEFAULT FALSE,
+            completion_date TIMESTAMP WITH TIME ZONE,
             UNIQUE(member_id, task_id, due_date)
-        );""",
-        """INSERT INTO tasks (...) SELECT ... ON CONFLICT ...;""", # Keep default task inserts
-        """INSERT INTO tasks (...) SELECT ... ON CONFLICT ...;""" # Keep default task inserts
+        );
+        """
+        # --- Default Task INSERT statements REMOVED ---
     ]
-    # --- Full init_db code from previous version (with new member columns) goes here ---
     conn = get_db_connection()
-    if conn is None: logger.error("Cannot initialize DB: No connection."); return
+    if conn is None:
+        logger.error("Cannot initialize DB: No connection.")
+        return
     try:
         with conn.cursor() as cur:
-            for command in commands:
-                # Ensure full commands from previous correct versions are here
-                logger.debug(f"Executing DB command: {command[:100]}...")
-                cur.execute(command)
+            for i, command in enumerate(commands):
+                # Ensure command is a non-empty string before executing
+                if command and isinstance(command, str) and command.strip():
+                     logger.debug(f"Executing DB command #{i+1}: {command[:100].strip()}...")
+                     cur.execute(command)
+                else:
+                     logger.warning(f"Skipping empty or invalid command at index {i}")
         conn.commit()
-        logger.info("Database tables checked/created/updated successfully.")
-    except Exception as e: logger.error(f"Error initializing/updating database: {e}"); conn.rollback()
-    finally: conn.close()
-
+        logger.info("Database tables checked/created/updated successfully (no default tasks added).")
+    except Exception as e:
+        logger.error(f"Error initializing/updating database: {e}")
+        conn.rollback()
+        raise # Re-raise after logging
+    finally:
+        if conn:
+            conn.close()
 
 # --- Register Blueprints ---
 app.register_blueprint(members_bp)
